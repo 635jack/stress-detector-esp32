@@ -1,40 +1,53 @@
 # Détecteur de Stress ESP32
 
-Ce projet utilise un ESP32 et un capteur MAX30102 pour détecter le stress en temps réel en analysant la variabilité de la fréquence cardiaque (HRV).
+Ce projet utilise un ESP32 avec un capteur MAX30102 pour détecter le stress. Le capteur mesure la fréquence cardiaque et la variabilité de la fréquence cardiaque (HRV) qui sont des indicateurs importants du niveau de stress.
 
-## 🛠️ Matériel requis
-- ESP32 (testé avec Feather ESP32)
+## Approches du Projet
+
+### 1. Approche Simple (Actuelle)
+- Utilisation directe des données brutes du capteur MAX30102
+- Mesure des signaux RED et IR
+- Affichage des valeurs sur le port série
+- Configuration I2C optimisée pour le capteur
+
+### 2. Approche Avancée (À venir)
+- Calcul de la fréquence cardiaque
+- Analyse de la variabilité de la fréquence cardiaque (HRV)
+- Détection des pics R pour une analyse plus précise
+- Filtrage des signaux pour réduire le bruit
+- Algorithmes de détection de stress basés sur la HRV
+
+## Configuration Matérielle
+
+- ESP32 Feather
 - Capteur MAX30102
-- Câbles de connexion
+- Connexions :
+  - VCC -> 3.3V
+  - GND -> GND
+  - SDA -> GPIO 23
+  - SCL -> GPIO 22
 
-## 📦 Structure du projet
-- `src/main.cpp` : Programme principal
-- `include/HRVCalculator.h` : Calcul de la HRV
-- `src/HRVCalculator.cpp` : Implémentation du calculateur HRV
+## Dépendances
 
-## 🌳 Branches Git
-- `main` : Version de base avec lecture du capteur et calcul HRV
-- `offline-mlp` : Version avec MLP pré-entraîné
-- `online-hebb` : Version avec apprentissage Hebbien en ligne
+- SparkFun MAX3010x Pulse and Proximity Sensor Library
+- Wire (pour la communication I2C)
 
-## 🔧 Installation
-1. Cloner le dépôt
-2. Installer les dépendances PlatformIO
-3. Compiler et téléverser sur l'ESP32
+## Installation
 
-## 📊 Fonctionnalités
-- Lecture en temps réel du BPM et SpO2
-- Calcul de la HRV (RMSSD)
-- Affichage des données sur le port série
+1. Clonez ce dépôt
+2. Ouvrez le projet dans PlatformIO
+3. Téléversez le code sur votre ESP32
+4. Ouvrez le moniteur série à 115200 bauds
 
-## 🔄 Workflow de développement
-1. Commencer par la branche `main` pour la version de base
-2. Tester la lecture du capteur et le calcul HRV
-3. Choisir une approche d'apprentissage automatique :
-   - `offline-mlp` pour un modèle pré-entraîné
-   - `online-hebb` pour l'apprentissage en ligne
+## Utilisation
 
-## 📝 Notes
-- Le capteur MAX30102 doit être correctement connecté aux broches I2C (SDA: 21, SCL: 22)
-- La fréquence d'échantillonnage est de 100Hz
-- Le calcul de la HRV utilise une fenêtre glissante de 100 échantillons 
+1. Connectez le capteur MAX30102 à votre doigt
+2. Observez les valeurs sur le moniteur série
+3. Les valeurs RED et IR seront affichées en temps réel
+
+## Prochaines Étapes
+
+- Implémentation de l'algorithme de détection de pics R
+- Calcul de la fréquence cardiaque
+- Analyse de la HRV
+- Interface utilisateur pour afficher le niveau de stress 
