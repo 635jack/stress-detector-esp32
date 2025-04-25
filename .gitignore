@@ -1,4 +1,21 @@
 .pio
+.vscode
+__pycache__/
+*.pyc
+
+# donnees generees
+data/*.npy
+data/*.png
+data/*.h5
+data/*.tflite
+data/error_log.txt
+
+# garder les scripts et les donnees brutes
+!data/preprocess.py
+!data/train_model.py
+!data/requirements.txt
+!data/stress_data_*.csv
+
 .vscode/.browse.c_cpp.db*
 .vscode/c_cpp_properties.json
 .vscode/launch.json
