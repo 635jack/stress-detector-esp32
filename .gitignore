@@ -9,6 +9,8 @@ data/*.png
 data/*.h5
 data/*.tflite
 data/error_log.txt
+data/model/
+temp_data/
 
 # garder les scripts et les donnees brutes
 !data/preprocess.py
@@ -23,3 +25,7 @@ RAPPORT.md
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+
+# fichiers systeme
+.DS_Store
+**/.DS_Store
