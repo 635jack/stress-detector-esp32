@@ -7,11 +7,13 @@
 #include "tensorflow/lite/schema/schema_generated.h"
 #include <CircularBuffer.h>
 #include <stdint.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 // 🎯 parametres du modele
-#define SEQUENCE_LENGTH 1500
+#define SEQUENCE_LENGTH 1500  // augmente a 1500 pour correspondre au modele MLP
 #define N_FEATURES 2
-#define TENSOR_ARENA_SIZE (200 * 1024)
+#define TENSOR_ARENA_SIZE (600 * 1024)  // reduit a 600KB pour le MLP
 
 class StressDetector {
 public:
@@ -31,6 +33,10 @@ public:
     bool isBufferFull() const { return sampleCount >= SEQUENCE_LENGTH; }
     int getSampleCount() const { return sampleCount; }
     
+    // 📈 normalisation
+    void normalizeBuffers();
+    void clearBuffers();
+    
 private:
     // 🧠 modele tflite
     const tflite::Model* model;
@@ -39,7 +45,11 @@ private:
     TfLiteTensor* output_tensor;
     
     // 🎯 buffer pour l'inference
-    uint8_t tensor_arena[TENSOR_ARENA_SIZE];
+    #ifdef BOARD_HAS_PSRAM
+        uint8_t* tensor_arena = nullptr;
+    #else
+        uint8_t tensor_arena[TENSOR_ARENA_SIZE];
+    #endif
     
     // 📊 buffers pour les donnees
     CircularBuffer<float, SEQUENCE_LENGTH> irBuffer;
@@ -50,7 +60,6 @@ private:
     float ir_mean, ir_std;
     float red_mean, red_std;
     
-    // 🔧 fonctions utilitaires
-    void normalizeBuffers();
-    void clearBuffers();
+    // 🔒 protection de la memoire
+    SemaphoreHandle_t memoryMutex;
 }; 

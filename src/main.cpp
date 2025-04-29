@@ -4,9 +4,13 @@
 #include <CircularBuffer.h>
 #include <SPIFFS.h>
 #include "StressDetector.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/semphr.h>
 
 MAX30105 particleSensor;
 StressDetector stressDetector;
+SemaphoreHandle_t initDoneSemaphore;
 
 // 🎯 parametres pour l'analyse
 #define SAMPLING_RATE 100 // hz
@@ -35,6 +39,21 @@ void scanI2C() {
     }
   }
   Serial.println("🔍 scan termine");
+}
+
+void initDetectorTask(void* parameter) {
+  Serial.println("🧠 initialisation du detecteur sur le core 0...");
+  
+  if (!stressDetector.begin()) {
+    Serial.println("❌ erreur initialisation detecteur");
+    xSemaphoreGive(initDoneSemaphore);
+    vTaskDelete(NULL);
+    return;
+  }
+  
+  Serial.println("✅ detecteur initialise !");
+  xSemaphoreGive(initDoneSemaphore);
+  vTaskDelete(NULL);
 }
 
 void setup() {
@@ -69,13 +88,36 @@ void setup() {
   particleSensor.setFIFOAverage(16);
   particleSensor.enableDIETEMPRDY();
   
-  // 🧠 init detecteur de stress
-  if (!stressDetector.begin()) {
-    Serial.println("❌ erreur initialisation detecteur");
+  // 🧠 init detecteur de stress sur le core 0
+  initDoneSemaphore = xSemaphoreCreateBinary();
+  if (initDoneSemaphore == NULL) {
+    Serial.println("❌ erreur creation semaphore");
     while (1);
   }
   
-  Serial.println("✅ detecteur initialise !");
+  if (xPortGetCoreID() != 0) {
+    Serial.println("📌 creation de la tache d'initialisation sur le core 0...");
+    xTaskCreatePinnedToCore(
+      initDetectorTask,
+      "init_detector",
+      8192,
+      NULL,
+      1,
+      NULL,
+      0  // core 0
+    );
+    
+    // ⏳ attente de la fin de l'initialisation
+    if (xSemaphoreTake(initDoneSemaphore, pdMS_TO_TICKS(5000)) != pdTRUE) {
+      Serial.println("❌ timeout initialisation detecteur");
+      while (1);
+    }
+  } else {
+    // on est deja sur le core 0
+    initDetectorTask(NULL);
+  }
+  
+  vSemaphoreDelete(initDoneSemaphore);
   Serial.println("⏳ placez votre doigt sur le capteur...");
 }
 

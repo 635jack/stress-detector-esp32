@@ -126,6 +126,10 @@ def main():
     converter.target_spec.supported_types = [tf.float32]
     converter.inference_input_type = tf.float32
     converter.inference_output_type = tf.float32
+    
+    # 🔧 forcer la version 3 pour compatibilite ESP32
+    converter.target_spec.schema_version = 3
+    
     tflite_model = converter.convert()
     
     # 💾 sauvegarde du modele TFLite

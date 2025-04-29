@@ -19,18 +19,16 @@ StressDetector::StressDetector() :
     interpreter(nullptr),
     input_tensor(nullptr),
     output_tensor(nullptr),
-    tensor_arena(nullptr),
-    irBuffer(nullptr),
-    redBuffer(nullptr),
     sampleCount(0),
     ir_mean(0), ir_std(1),
-    red_mean(0), red_std(1)
+    red_mean(0), red_std(1),
+    memoryMutex(xSemaphoreCreateMutex())  // initialisation directe
 {
-    // 🎯 allocation dans PSRAM
-    tensor_arena = (uint8_t*)ps_malloc(TENSOR_ARENA_SIZE);
-    irBuffer = new CircularBuffer<float, SEQUENCE_LENGTH>();
-    redBuffer = new CircularBuffer<float, SEQUENCE_LENGTH>();
-    
+    // verification que le mutex est bien cree
+    if (memoryMutex == nullptr) {
+        Serial.println("❌ erreur creation mutex");
+        return;
+    }
     clearBuffers();
 }
 
@@ -38,42 +36,92 @@ StressDetector::~StressDetector() {
     if (interpreter) {
         delete interpreter;
     }
+    if (memoryMutex) {
+        vSemaphoreDelete(memoryMutex);
+    }
     if (tensor_arena) {
         free(tensor_arena);
-    }
-    if (irBuffer) {
-        delete irBuffer;
-    }
-    if (redBuffer) {
-        delete redBuffer;
     }
 }
 
 bool StressDetector::begin() {
+    // 🔒 verification du mutex
+    if (memoryMutex == nullptr) {
+        Serial.println("❌ mutex non initialise");
+        return false;
+    }
+
+    // 🧠 verification PSRAM
+    #ifdef BOARD_HAS_PSRAM
+    if (!psramFound()) {
+        Serial.println("❌ PSRAM non detectee");
+        return false;
+    }
+    
+    // 📊 affichage info memoire
+    Serial.printf("📊 PSRAM totale: %d octets\n", ESP.getFreePsram());
+    Serial.printf("📊 Heap totale: %d octets\n", ESP.getFreeHeap());
+    
+    // 🧠 allocation du buffer des tenseurs sur le core 0
+    if (xPortGetCoreID() != 0) {
+        Serial.println("❌ l'allocation doit etre faite sur le core 0");
+        return false;
+    }
+    
+    tensor_arena = (uint8_t*)ps_malloc(TENSOR_ARENA_SIZE);
+    if (!tensor_arena) {
+        Serial.printf("❌ Erreur allocation PSRAM pour tensor_arena (%d octets)\n", TENSOR_ARENA_SIZE);
+        return false;
+    }
+    Serial.printf("✅ tensor_arena alloue en PSRAM: %d octets\n", TENSOR_ARENA_SIZE);
+    #endif
+
     // 📝 chargement du modele depuis SPIFFS
     if (!SPIFFS.begin(true)) {
         Serial.println("❌ erreur SPIFFS");
         return false;
     }
     
-    File modelFile = SPIFFS.open("/model/stress_detector_model.tflite", "r");
+    File modelFile = SPIFFS.open("/model.tflite", "r");
     if (!modelFile) {
         Serial.println("❌ erreur ouverture modele");
         return false;
     }
     
     size_t modelSize = modelFile.size();
-    uint8_t* modelBuffer = (uint8_t*)malloc(modelSize);
-    if (!modelBuffer) {
-        Serial.println("❌ erreur allocation memoire");
-        return false;
-    }
+    Serial.printf("📦 taille du modele: %d octets\n", modelSize);
+    
+    // 🧠 allocation du modele en PSRAM
+    uint8_t* modelBuffer = nullptr;
+    #ifdef BOARD_HAS_PSRAM
+        modelBuffer = (uint8_t*)ps_malloc(modelSize);
+        if (!modelBuffer) {
+            Serial.printf("❌ Erreur allocation PSRAM pour modele (%d octets)\n", modelSize);
+            return false;
+        }
+        Serial.printf("✅ modele alloue en PSRAM: %d octets\n", modelSize);
+    #else
+        modelBuffer = (uint8_t*)malloc(modelSize);
+        if (!modelBuffer) {
+            Serial.println("❌ erreur allocation memoire modele");
+            return false;
+        }
+    #endif
     
     modelFile.read(modelBuffer, modelSize);
     modelFile.close();
     
     // 🧠 initialisation tflite
     model = tflite::GetModel(modelBuffer);
+    if (model == nullptr) {
+        Serial.println("❌ erreur chargement modele");
+        return false;
+    }
+    
+    // 📊 verification de la version
+    Serial.printf("📊 version du modele: %d\n", model->version());
+    Serial.printf("📊 version attendue: %d\n", TFLITE_SCHEMA_VERSION);
+    
     if (model->version() != TFLITE_SCHEMA_VERSION) {
         Serial.println("❌ version modele incompatible");
         return false;
@@ -86,6 +134,11 @@ bool StressDetector::begin() {
         model, resolver, tensor_arena, TENSOR_ARENA_SIZE, &error_reporter
     );
     
+    if (interpreter == nullptr) {
+        Serial.println("❌ erreur creation interpreteur");
+        return false;
+    }
+    
     if (interpreter->AllocateTensors() != kTfLiteOk) {
         Serial.println("❌ erreur allocation tenseurs");
         return false;
@@ -94,24 +147,32 @@ bool StressDetector::begin() {
     input_tensor = interpreter->input(0);
     output_tensor = interpreter->output(0);
     
+    if (input_tensor == nullptr || output_tensor == nullptr) {
+        Serial.println("❌ erreur recuperation tenseurs");
+        return false;
+    }
+    
     // ✅ verification dimensions
-    if (input_tensor->dims->size != 3 || 
-        input_tensor->dims->data[1] != SEQUENCE_LENGTH || 
-        input_tensor->dims->data[2] != N_FEATURES) {
+    if (input_tensor->dims->size != 2 || 
+        input_tensor->dims->data[1] != SEQUENCE_LENGTH * N_FEATURES) {
         Serial.println("❌ dimensions modele invalides");
         return false;
     }
     
+    Serial.println("✅ modele charge avec succes");
     return true;
 }
 
 void StressDetector::addSample(uint32_t ir, uint32_t red) {
-    // 📊 ajout aux buffers
-    irBuffer->push(ir);
-    redBuffer->push(red);
-    
-    if (sampleCount < SEQUENCE_LENGTH) {
-        sampleCount++;
+    if (xSemaphoreTake(memoryMutex, portMAX_DELAY) == pdTRUE) {
+        // 📊 ajout aux buffers
+        irBuffer.push(ir);
+        redBuffer.push(red);
+        
+        if (sampleCount < SEQUENCE_LENGTH) {
+            sampleCount++;
+        }
+        xSemaphoreGive(memoryMutex);
     }
 }
 
@@ -120,29 +181,35 @@ bool StressDetector::predict(float* probabilities) {
         return false;
     }
     
-    // 📈 normalisation
-    normalizeBuffers();
-    
-    // 🔄 copie des donnees dans le tenseur d'entree
-    float* input_data = input_tensor->data.f;
-    for (int i = 0; i < SEQUENCE_LENGTH; i++) {
-        input_data[i * N_FEATURES] = ((*irBuffer)[i] - ir_mean) / ir_std;
-        input_data[i * N_FEATURES + 1] = ((*redBuffer)[i] - red_mean) / red_std;
-    }
-    
-    // 🧠 inference
-    if (interpreter->Invoke() != kTfLiteOk) {
-        Serial.println("❌ erreur inference");
+    if (xSemaphoreTake(memoryMutex, portMAX_DELAY) != pdTRUE) {
         return false;
     }
     
-    // 📊 copie des probabilites
-    float* output_data = output_tensor->data.f;
-    for (int i = 0; i < 3; i++) {
-        probabilities[i] = output_data[i];
+    // 📈 normalisation
+    normalizeBuffers();
+    
+    // 🔄 copie des donnees dans le tenseur d'entree (aplati)
+    float* input_data = input_tensor->data.f;
+    for (int i = 0; i < SEQUENCE_LENGTH; i++) {
+        input_data[i * N_FEATURES] = (irBuffer[i] - ir_mean) / ir_std;
+        input_data[i * N_FEATURES + 1] = (redBuffer[i] - red_mean) / red_std;
     }
     
-    return true;
+    // 🧠 inference
+    bool success = true;
+    if (interpreter->Invoke() != kTfLiteOk) {
+        Serial.println("❌ erreur inference");
+        success = false;
+    } else {
+        // 📊 copie des probabilites
+        float* output_data = output_tensor->data.f;
+        for (int i = 0; i < 3; i++) {
+            probabilities[i] = output_data[i];
+        }
+    }
+    
+    xSemaphoreGive(memoryMutex);
+    return success;
 }
 
 void StressDetector::normalizeBuffers() {
@@ -151,8 +218,8 @@ void StressDetector::normalizeBuffers() {
     red_mean = 0;
     
     for (int i = 0; i < SEQUENCE_LENGTH; i++) {
-        ir_mean += (*irBuffer)[i];
-        red_mean += (*redBuffer)[i];
+        ir_mean += irBuffer[i];
+        red_mean += redBuffer[i];
     }
     
     ir_mean /= SEQUENCE_LENGTH;
@@ -162,8 +229,8 @@ void StressDetector::normalizeBuffers() {
     red_std = 0;
     
     for (int i = 0; i < SEQUENCE_LENGTH; i++) {
-        float ir_diff = (*irBuffer)[i] - ir_mean;
-        float red_diff = (*redBuffer)[i] - red_mean;
+        float ir_diff = irBuffer[i] - ir_mean;
+        float red_diff = redBuffer[i] - red_mean;
         ir_std += ir_diff * ir_diff;
         red_std += red_diff * red_diff;
     }
@@ -177,7 +244,10 @@ void StressDetector::normalizeBuffers() {
 }
 
 void StressDetector::clearBuffers() {
-    irBuffer->clear();
-    redBuffer->clear();
-    sampleCount = 0;
+    if (xSemaphoreTake(memoryMutex, portMAX_DELAY) == pdTRUE) {
+        irBuffer.clear();
+        redBuffer.clear();
+        sampleCount = 0;
+        xSemaphoreGive(memoryMutex);
+    }
 } 
