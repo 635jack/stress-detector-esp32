@@ -18,16 +18,33 @@ StressDetector::StressDetector() :
     interpreter(nullptr),
     input_tensor(nullptr),
     output_tensor(nullptr),
+    tensor_arena(nullptr),
+    irBuffer(nullptr),
+    redBuffer(nullptr),
     sampleCount(0),
     ir_mean(0), ir_std(1),
     red_mean(0), red_std(1)
 {
+    // 🎯 allocation dans PSRAM
+    tensor_arena = (uint8_t*)ps_malloc(TENSOR_ARENA_SIZE);
+    irBuffer = new CircularBuffer<float, SEQUENCE_LENGTH>();
+    redBuffer = new CircularBuffer<float, SEQUENCE_LENGTH>();
+    
     clearBuffers();
 }
 
 StressDetector::~StressDetector() {
     if (interpreter) {
         delete interpreter;
+    }
+    if (tensor_arena) {
+        free(tensor_arena);
+    }
+    if (irBuffer) {
+        delete irBuffer;
+    }
+    if (redBuffer) {
+        delete redBuffer;
     }
 }
 
@@ -67,8 +84,8 @@ bool StressDetector::begin() {
 
 void StressDetector::addSample(uint32_t ir, uint32_t red) {
     // 📊 ajout aux buffers
-    irBuffer.push(ir);
-    redBuffer.push(red);
+    irBuffer->push(ir);
+    redBuffer->push(red);
     
     if (sampleCount < SEQUENCE_LENGTH) {
         sampleCount++;
@@ -86,8 +103,8 @@ bool StressDetector::predict(float* probabilities) {
     // 🔄 copie des donnees dans le tenseur d'entree
     float* input_data = input_tensor->data.f;
     for (int i = 0; i < SEQUENCE_LENGTH; i++) {
-        input_data[i * N_FEATURES] = (irBuffer[i] - ir_mean) / ir_std;
-        input_data[i * N_FEATURES + 1] = (redBuffer[i] - red_mean) / red_std;
+        input_data[i * N_FEATURES] = ((*irBuffer)[i] - ir_mean) / ir_std;
+        input_data[i * N_FEATURES + 1] = ((*redBuffer)[i] - red_mean) / red_std;
     }
     
     // 🧠 inference
@@ -111,8 +128,8 @@ void StressDetector::normalizeBuffers() {
     red_mean = 0;
     
     for (int i = 0; i < SEQUENCE_LENGTH; i++) {
-        ir_mean += irBuffer[i];
-        red_mean += redBuffer[i];
+        ir_mean += (*irBuffer)[i];
+        red_mean += (*redBuffer)[i];
     }
     
     ir_mean /= SEQUENCE_LENGTH;
@@ -122,8 +139,8 @@ void StressDetector::normalizeBuffers() {
     red_std = 0;
     
     for (int i = 0; i < SEQUENCE_LENGTH; i++) {
-        float ir_diff = irBuffer[i] - ir_mean;
-        float red_diff = redBuffer[i] - red_mean;
+        float ir_diff = (*irBuffer)[i] - ir_mean;
+        float red_diff = (*redBuffer)[i] - red_mean;
         ir_std += ir_diff * ir_diff;
         red_std += red_diff * red_diff;
     }
@@ -137,7 +154,7 @@ void StressDetector::normalizeBuffers() {
 }
 
 void StressDetector::clearBuffers() {
-    irBuffer.clear();
-    redBuffer.clear();
+    irBuffer->clear();
+    redBuffer->clear();
     sampleCount = 0;
 } 
