@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv1D, LSTM, Dense, Dropout, BatchNormalization, MaxPooling1D, Flatten
+from tensorflow.keras.layers import Dense, Dropout, BatchNormalization
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 import os
@@ -20,40 +20,39 @@ def load_data():
     """charge les donnees preprocessees"""
     X = np.load(os.path.join(DATA_DIR, 'X_processed.npy'))
     y = np.load(os.path.join(DATA_DIR, 'y_processed.npy'))
+    
+    # normalisation des donnees 🔄
+    mean = np.mean(X, axis=(0, 1))
+    std = np.std(X, axis=(0, 1))
+    X = (X - mean) / (std + 1e-8)
+    
+    # aplatir les donnees pour le MLP
+    X = X.reshape(X.shape[0], -1)
+    
     return X, y
 
 def create_model():
-    """cree le modele CNN-LSTM"""
+    """cree le modele MLP simple"""
     model = Sequential([
-        # 🎯 couches convolutives pour extraire les features
-        Conv1D(filters=64, kernel_size=5, activation='relu', input_shape=(SEQUENCE_LENGTH, N_FEATURES)),
+        # couche d'entree 📥
+        Dense(64, activation='relu', input_shape=(SEQUENCE_LENGTH * N_FEATURES,)),
         BatchNormalization(),
-        MaxPooling1D(pool_size=2),
+        Dropout(0.2),
         
-        Conv1D(filters=128, kernel_size=3, activation='relu'),
+        # couche cachee 🎯
+        Dense(32, activation='relu'),
         BatchNormalization(),
-        MaxPooling1D(pool_size=2),
+        Dropout(0.2),
         
-        # 🎯 LSTM pour capturer les dependances temporelles
-        LSTM(128, return_sequences=True),
-        Dropout(0.3),
-        
-        LSTM(64),
-        Dropout(0.3),
-        
-        # 🎯 couches denses pour la classification
-        Dense(64, activation='relu'),
-        BatchNormalization(),
-        Dropout(0.3),
-        
+        # couche de sortie 📊
         Dense(N_CLASSES, activation='softmax')
     ])
     
-    model.compile(
-        optimizer='adam',
-        loss='sparse_categorical_crossentropy',
-        metrics=['accuracy']
-    )
+    # compilation
+    optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
+    model.compile(optimizer=optimizer,
+                 loss='sparse_categorical_crossentropy',
+                 metrics=['accuracy'])
     
     return model
 
@@ -78,11 +77,6 @@ def plot_training_history(history):
     plt.tight_layout()
     plt.savefig(os.path.join(DATA_DIR, 'training_history.png'))
     plt.close()
-
-def representative_dataset():
-    """genere un jeu de donnees representatif pour la quantification"""
-    for i in range(100):  # on utilise 100 exemples
-        yield [X_train[i:i+1]]
 
 def main():
     # 📝 chargement des donnees
@@ -126,10 +120,12 @@ def main():
     print("📱 conversion pour TFLite...")
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
     converter.target_spec.supported_ops = [
-        tf.lite.OpsSet.TFLITE_BUILTINS,
-        tf.lite.OpsSet.SELECT_TF_OPS
+        tf.lite.OpsSet.TFLITE_BUILTINS
     ]
-    converter._experimental_lower_tensor_list_ops = False
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.target_spec.supported_types = [tf.float32]
+    converter.inference_input_type = tf.float32
+    converter.inference_output_type = tf.float32
     tflite_model = converter.convert()
     
     # 💾 sauvegarde du modele TFLite
