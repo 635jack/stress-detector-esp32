@@ -1,5 +1,4 @@
 #pragma once
-
 #include <Arduino.h>
 #include <TensorFlowLite_ESP32.h>
 #include "tensorflow/lite/micro/all_ops_resolver.h"
@@ -7,12 +6,13 @@
 #include "tensorflow/lite/schema/schema_generated.h"
 #include <CircularBuffer.h>
 #include <stdint.h>
-#include "model_data.h"  // 🎯 modele integre
+#include "model_data.h" // 🎯 modele integre
 
 // 🎯 parametres du modele
 #define SEQUENCE_LENGTH 1500
 #define N_FEATURES 2
-#define TENSOR_ARENA_SIZE (200 * 1024)
+// Réduire la taille du tensor arena si nécessaire
+#define TENSOR_ARENA_SIZE (128 * 1024)
 
 class StressDetector {
 public:
@@ -31,7 +31,7 @@ public:
     // 📝 getters
     bool isBufferFull() const { return sampleCount >= SEQUENCE_LENGTH; }
     int getSampleCount() const { return sampleCount; }
-    
+
 private:
     // 🧠 modele tflite
     const tflite::Model* model;
@@ -54,4 +54,4 @@ private:
     // 🔧 fonctions utilitaires
     void normalizeBuffers();
     void clearBuffers();
-}; 
+};

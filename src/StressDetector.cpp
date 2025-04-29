@@ -1,6 +1,7 @@
 #include "StressDetector.h"
 #include <Arduino.h>
 #include <stdarg.h>
+#include <esp_heap_caps.h>
 
 // 🔧 classe pour gérer les erreurs
 class MicroErrorReporter : public tflite::ErrorReporter {
@@ -25,31 +26,94 @@ StressDetector::StressDetector() :
     ir_mean(0), ir_std(1),
     red_mean(0), red_std(1)
 {
-    // 🎯 allocation dans PSRAM
-    tensor_arena = (uint8_t*)ps_malloc(TENSOR_ARENA_SIZE);
-    irBuffer = new CircularBuffer<float, SEQUENCE_LENGTH>();
-    redBuffer = new CircularBuffer<float, SEQUENCE_LENGTH>();
+    Serial.println("\n🔍 debut initialisation StressDetector");
     
+    // 📊 affichage memoire disponible
+    Serial.print("📊 memoire PSRAM disponible: ");
+    Serial.print(ESP.getFreePsram());
+    Serial.println(" bytes");
+    
+    // 🎯 allocation dans PSRAM
+    Serial.println("\n📊 allocation des buffers...");
+    
+    // Allouer d'abord les buffers circulaires (plus petits)
+    irBuffer = new (std::nothrow) CircularBuffer<float, SEQUENCE_LENGTH>();
+    if (!irBuffer) {
+        Serial.println("❌ erreur allocation irBuffer");
+        return;
+    }
+    Serial.println("✅ irBuffer alloue");
+    
+    redBuffer = new (std::nothrow) CircularBuffer<float, SEQUENCE_LENGTH>();
+    if (!redBuffer) {
+        Serial.println("❌ erreur allocation redBuffer");
+        return;
+    }
+    Serial.println("✅ redBuffer alloue");
+    
+    // Allouer ensuite tensor_arena avec MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM
+    Serial.println("\n📊 allocation tensor_arena...");
+    Serial.print("📊 taille requise: ");
+    Serial.print(TENSOR_ARENA_SIZE);
+    Serial.println(" bytes");
+    
+    // Utiliser les bons flags de capacité pour PSRAM
+    tensor_arena = (uint8_t*)heap_caps_malloc(TENSOR_ARENA_SIZE, MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM);
+    if (!tensor_arena) {
+        Serial.println("❌ erreur allocation tensor_arena");
+        return;
+    }
+    Serial.println("✅ tensor_arena alloue");
+    
+    // Vérifier l'état de la mémoire après allocations
+    Serial.print("📊 memoire PSRAM restante: ");
+    Serial.print(ESP.getFreePsram());
+    Serial.println(" bytes");
+    
+    Serial.println("\n✅ initialisation StressDetector terminee");
     clearBuffers();
 }
 
 StressDetector::~StressDetector() {
+    Serial.println("\n🔍 destruction StressDetector");
+    
     if (interpreter) {
+        Serial.println("📊 liberation interpreter");
         delete interpreter;
     }
     if (tensor_arena) {
-        free(tensor_arena);
+        Serial.println("📊 liberation tensor_arena");
+        heap_caps_free(tensor_arena);
     }
     if (irBuffer) {
+        Serial.println("📊 liberation irBuffer");
         delete irBuffer;
     }
     if (redBuffer) {
+        Serial.println("📊 liberation redBuffer");
         delete redBuffer;
     }
+    
+    Serial.println("✅ destruction terminee");
 }
 
 bool StressDetector::begin() {
+    Serial.println("\n🔍 debut initialisation tflite");
+    
+    // ✅ verification allocations
+    if (!tensor_arena || !irBuffer || !redBuffer) {
+        Serial.println("❌ erreur allocation memoire");
+        Serial.print("📊 tensor_arena: ");
+        Serial.println(tensor_arena ? "OK" : "NULL");
+        Serial.print("📊 irBuffer: ");
+        Serial.println(irBuffer ? "OK" : "NULL");
+        Serial.print("📊 redBuffer: ");
+        Serial.println(redBuffer ? "OK" : "NULL");
+        return false;
+    }
+    
     // 🧠 initialisation tflite avec le modele integre
+    Serial.println("\n📊 initialisation tflite...");
     model = tflite::GetModel(model_data);
     if (model->version() != TFLITE_SCHEMA_VERSION) {
         Serial.println("❌ version modele incompatible");
@@ -59,10 +123,12 @@ bool StressDetector::begin() {
     static tflite::AllOpsResolver resolver;
     static MicroErrorReporter error_reporter;
     
+    Serial.println("📊 creation interpreter...");
     interpreter = new tflite::MicroInterpreter(
         model, resolver, tensor_arena, TENSOR_ARENA_SIZE, &error_reporter
     );
     
+    Serial.println("📊 allocation tenseurs...");
     if (interpreter->AllocateTensors() != kTfLiteOk) {
         Serial.println("❌ erreur allocation tenseurs");
         return false;
@@ -79,6 +145,7 @@ bool StressDetector::begin() {
         return false;
     }
     
+    Serial.println("✅ initialisation tflite terminee");
     return true;
 }
 
@@ -157,4 +224,4 @@ void StressDetector::clearBuffers() {
     irBuffer->clear();
     redBuffer->clear();
     sampleCount = 0;
-} 
+}

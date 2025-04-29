@@ -4,6 +4,7 @@
 #include <CircularBuffer.h>
 #include <SPIFFS.h>
 #include "StressDetector.h"
+#include <esp_heap_caps.h>
 
 MAX30105 particleSensor;
 StressDetector stressDetector;
@@ -42,6 +43,13 @@ void setup() {
   delay(5000); // ⏳ delai plus long pour la stabilisation
   
   Serial.println("🚀 initialisation...");
+  
+  // 🎯 init PSRAM
+  if (!psramFound()) {
+    Serial.println("❌ PSRAM non trouvee");
+    while(1);
+  }
+  Serial.println("✅ PSRAM trouvee");
   
   // 🔌 config i2c
   Wire.begin();
