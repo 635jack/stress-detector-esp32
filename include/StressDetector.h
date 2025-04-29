@@ -7,7 +7,6 @@
 #include "tensorflow/lite/schema/schema_generated.h"
 #include <CircularBuffer.h>
 #include <stdint.h>
-#include "model_data.h"  // 🎯 modele integre
 
 // 🎯 parametres du modele
 #define SEQUENCE_LENGTH 1500
@@ -39,12 +38,12 @@ private:
     TfLiteTensor* input_tensor;
     TfLiteTensor* output_tensor;
     
-    // 🎯 buffer pour l'inference (dans PSRAM)
-    uint8_t* tensor_arena;
+    // 🎯 buffer pour l'inference
+    uint8_t tensor_arena[TENSOR_ARENA_SIZE];
     
-    // 📊 buffers pour les donnees (dans PSRAM)
-    CircularBuffer<float, SEQUENCE_LENGTH>* irBuffer;
-    CircularBuffer<float, SEQUENCE_LENGTH>* redBuffer;
+    // 📊 buffers pour les donnees
+    CircularBuffer<float, SEQUENCE_LENGTH> irBuffer;
+    CircularBuffer<float, SEQUENCE_LENGTH> redBuffer;
     int sampleCount;
     
     // 📈 normalisation

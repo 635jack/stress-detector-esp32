@@ -1,6 +1,7 @@
 #include "StressDetector.h"
 #include <Arduino.h>
 #include <stdarg.h>
+#include <SPIFFS.h>
 
 // 🔧 classe pour gérer les erreurs
 class MicroErrorReporter : public tflite::ErrorReporter {
@@ -49,8 +50,30 @@ StressDetector::~StressDetector() {
 }
 
 bool StressDetector::begin() {
-    // 🧠 initialisation tflite avec le modele integre
-    model = tflite::GetModel(model_data);
+    // 📝 chargement du modele depuis SPIFFS
+    if (!SPIFFS.begin(true)) {
+        Serial.println("❌ erreur SPIFFS");
+        return false;
+    }
+    
+    File modelFile = SPIFFS.open("/model/stress_detector_model.tflite", "r");
+    if (!modelFile) {
+        Serial.println("❌ erreur ouverture modele");
+        return false;
+    }
+    
+    size_t modelSize = modelFile.size();
+    uint8_t* modelBuffer = (uint8_t*)malloc(modelSize);
+    if (!modelBuffer) {
+        Serial.println("❌ erreur allocation memoire");
+        return false;
+    }
+    
+    modelFile.read(modelBuffer, modelSize);
+    modelFile.close();
+    
+    // 🧠 initialisation tflite
+    model = tflite::GetModel(modelBuffer);
     if (model->version() != TFLITE_SCHEMA_VERSION) {
         Serial.println("❌ version modele incompatible");
         return false;
