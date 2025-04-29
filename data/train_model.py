@@ -79,6 +79,11 @@ def plot_training_history(history):
     plt.savefig(os.path.join(DATA_DIR, 'training_history.png'))
     plt.close()
 
+def representative_dataset():
+    """genere un jeu de donnees representatif pour la quantification"""
+    for i in range(100):  # on utilise 100 exemples
+        yield [X_train[i:i+1]]
+
 def main():
     # 📝 chargement des donnees
     print("🔄 chargement des donnees...")
@@ -128,7 +133,9 @@ def main():
     tflite_model = converter.convert()
     
     # 💾 sauvegarde du modele TFLite
-    with open(os.path.join(DATA_DIR, 'stress_detector_model.tflite'), 'wb') as f:
+    model_dir = os.path.join(DATA_DIR, 'model')
+    os.makedirs(model_dir, exist_ok=True)
+    with open(os.path.join(model_dir, 'model.tflite'), 'wb') as f:
         f.write(tflite_model)
     
     print("✅ terminé!")
