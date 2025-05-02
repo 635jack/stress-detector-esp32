@@ -404,4 +404,42 @@ if __name__ == "__main__":
 - Amélioration de la précision du modèle
 - Interface utilisateur graphique
 - Stockage des données
-- Analyse de la variabilité cardiaque 
+- Analyse de la variabilité cardiaque
+
+## 🌳 Branches
+
+### flash_storage
+Cette branche implémente le stockage des données dans la mémoire flash de l'ESP32 (SPIFFS). Les fonctionnalités incluent :
+- Stockage persistant des données de calibration
+- Sauvegarde des paramètres du modèle
+- Gestion de la mémoire flash avec SPIFFS
+- Optimisation de l'utilisation de la mémoire
+
+Pour utiliser cette branche :
+```bash
+git checkout flash_storage
+```
+
+### offline-mlp
+Cette branche implémente un réseau de neurones MLP (Multi-Layer Perceptron) pour l'analyse du stress. Caractéristiques :
+- Modèle MLP entraîné hors ligne
+- Prétraitement des données avec normalisation
+- Classification en 3 états : repos, stress, exercice
+- Optimisation pour l'ESP32
+
+Pour utiliser cette branche :
+```bash
+git checkout offline-mlp
+```
+
+### online-hebb
+Cette branche implémente un apprentissage en ligne basé sur la règle de Hebb. Caractéristiques :
+- Apprentissage continu pendant l'utilisation
+- Adaptation aux changements physiologiques
+- Pas besoin de données pré-entraînées
+- Optimisation mémoire pour l'ESP32
+
+Pour utiliser cette branche :
+```bash
+git checkout online-hebb
+``` 
