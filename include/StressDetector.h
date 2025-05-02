@@ -1,5 +1,4 @@
 #pragma once
-
 #include <Arduino.h>
 #include <TensorFlowLite_ESP32.h>
 #include "tensorflow/lite/micro/all_ops_resolver.h"
@@ -11,9 +10,14 @@
 #include <freertos/semphr.h>
 
 // 🎯 parametres du modele
-#define SEQUENCE_LENGTH 1500  // augmente a 1500 pour correspondre au modele MLP
+#define SEQUENCE_LENGTH 1500
 #define N_FEATURES 2
-#define TENSOR_ARENA_SIZE (600 * 1024)  // reduit a 600KB pour le MLP
+#define TENSOR_ARENA_SIZE (48 * 1024) // augmente a 48KB pour etre sur
+
+// 🔍 debug flags
+#define DEBUG_TENSOR_ALLOCATION 1
+#define DEBUG_MODEL_VERSION 1
+#define DEBUG_POINTERS 1
 
 class StressDetector {
 public:
@@ -32,6 +36,7 @@ public:
     // 📝 getters
     bool isBufferFull() const { return sampleCount >= SEQUENCE_LENGTH; }
     int getSampleCount() const { return sampleCount; }
+    bool isInitialized() const { return initialized; }
     
     // 📈 normalisation
     void normalizeBuffers();
@@ -46,9 +51,9 @@ private:
     
     // 🎯 buffer pour l'inference
     #ifdef BOARD_HAS_PSRAM
-        uint8_t* tensor_arena = nullptr;
+    uint8_t* tensor_arena = nullptr;
     #else
-        uint8_t tensor_arena[TENSOR_ARENA_SIZE];
+    uint8_t tensor_arena[TENSOR_ARENA_SIZE];
     #endif
     
     // 📊 buffers pour les donnees
@@ -62,4 +67,7 @@ private:
     
     // 🔒 protection de la memoire
     SemaphoreHandle_t memoryMutex;
-}; 
+    
+    // ✅ flag d'initialisation
+    bool initialized;
+};

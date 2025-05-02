@@ -8,6 +8,9 @@
 #include <freertos/task.h>
 #include <freertos/semphr.h>
 
+// Définition de la LED pour indiquer l'état du système
+#define LED_PIN 2 // LED intégrée de l'ESP32
+
 MAX30105 particleSensor;
 StressDetector stressDetector;
 SemaphoreHandle_t initDoneSemaphore;
@@ -19,6 +22,7 @@ SemaphoreHandle_t initDoneSemaphore;
 // 📊 variables d'etat
 bool isRecording = false;
 unsigned long lastSampleTime = 0;
+bool detectorInitialized = false;
 
 // 📝 etats de stress
 const char* STATES[] = {"repos", "stress", "exercice"};
@@ -46,18 +50,23 @@ void initDetectorTask(void* parameter) {
   
   if (!stressDetector.begin()) {
     Serial.println("❌ erreur initialisation detecteur");
-    xSemaphoreGive(initDoneSemaphore);
-    vTaskDelete(NULL);
-    return;
+    detectorInitialized = false;
+  } else {
+    Serial.println("✅ detecteur initialise !");
+    detectorInitialized = true;
   }
   
-  Serial.println("✅ detecteur initialise !");
   xSemaphoreGive(initDoneSemaphore);
   vTaskDelete(NULL);
 }
 
 void setup() {
   Serial.begin(115200);
+  
+  // Configuration de la LED d'état
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW); // LED éteinte pendant l'initialisation
+  
   delay(5000); // ⏳ delai plus long pour la stabilisation
   
   Serial.println("🚀 initialisation...");
@@ -83,7 +92,8 @@ void setup() {
   particleSensor.setPulseAmplitudeRed(0x2F);
   particleSensor.setPulseAmplitudeGreen(0);
   particleSensor.setPulseAmplitudeIR(0x2F);
-  particleSensor.setPulseWidth(411);
+  // Correction de la valeur de la largeur d'impulsion qui cause un débordement
+  particleSensor.setPulseWidth(0x9F); // Au lieu de 411, utiliser la valeur hexadécimale correcte
   particleSensor.setSampleRate(SAMPLING_RATE);
   particleSensor.setFIFOAverage(16);
   particleSensor.enableDIETEMPRDY();
@@ -108,9 +118,9 @@ void setup() {
     );
     
     // ⏳ attente de la fin de l'initialisation
-    if (xSemaphoreTake(initDoneSemaphore, pdMS_TO_TICKS(5000)) != pdTRUE) {
+    if (xSemaphoreTake(initDoneSemaphore, pdMS_TO_TICKS(10000)) != pdTRUE) {
       Serial.println("❌ timeout initialisation detecteur");
-      while (1);
+      detectorInitialized = false;
     }
   } else {
     // on est deja sur le core 0
@@ -118,7 +128,20 @@ void setup() {
   }
   
   vSemaphoreDelete(initDoneSemaphore);
-  Serial.println("⏳ placez votre doigt sur le capteur...");
+  
+  if (!detectorInitialized) {
+    Serial.println("⚠️ Mode de fonctionnement dégradé - uniquement données brutes");
+    // LED clignote rapidement pour indiquer une erreur
+    for(int i=0; i<10; i++) {
+      digitalWrite(LED_PIN, HIGH);
+      delay(100);
+      digitalWrite(LED_PIN, LOW);
+      delay(100);
+    }
+  } else {
+    Serial.println("⏳ placez votre doigt sur le capteur...");
+    digitalWrite(LED_PIN, HIGH); // LED fixe pour indiquer système prêt
+  }
 }
 
 void loop() {
@@ -138,12 +161,21 @@ void loop() {
     if (currentTime - lastSampleTime >= (1000 / SAMPLING_RATE)) {
       lastSampleTime = currentTime;
       
+      // Mode dégradé - uniquement affichage des valeurs brutes
+      if (!detectorInitialized) {
+        if (lastSampleTime % 500 == 0) {
+          Serial.printf("📊 IR: %u, Red: %u\n", irValue, redValue);
+        }
+        return;
+      }
+      
       // 📊 ajout des donnees
       stressDetector.addSample(irValue, redValue);
       
       // 🎯 prediction si buffer plein
       if (stressDetector.isBufferFull()) {
-        float probabilities[3];
+        float probabilities[3] = {0};
+        
         if (stressDetector.predict(probabilities)) {
           // 📊 affichage resultats
           Serial.println("\n📊 resultats de l'analyse:");
@@ -167,6 +199,11 @@ void loop() {
           Serial.println("\n⏳ placez votre doigt sur le capteur pour une nouvelle analyse...");
           
           isRecording = false;
+          stressDetector.clearBuffers();
+        } else {
+          Serial.println("❌ erreur lors de la prediction");
+          isRecording = false;
+          stressDetector.clearBuffers();
         }
       } else {
         // 📈 affichage progression
@@ -181,7 +218,17 @@ void loop() {
   } else if (isRecording) {
     Serial.println("❌ doigt retire - analyse interrompue");
     isRecording = false;
+    stressDetector.clearBuffers();
     Serial.println("\n⏳ placez votre doigt sur le capteur pour une nouvelle analyse...");
+  }
+  
+  // Clignotement LED pour indiquer activité
+  if (isRecording && millis() % 500 < 250) {
+    digitalWrite(LED_PIN, HIGH);
+  } else if (isRecording) {
+    digitalWrite(LED_PIN, LOW);
+  } else if (detectorInitialized) {
+    digitalWrite(LED_PIN, HIGH);
   }
   
   delay(10);

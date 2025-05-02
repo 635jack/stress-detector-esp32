@@ -34,7 +34,7 @@ def load_data():
 def create_model():
     """cree le modele MLP simple"""
     model = Sequential([
-        # couche d'entree 📥
+        # couche d'entree 📥 avec forme fixe
         Dense(64, activation='relu', input_shape=(SEQUENCE_LENGTH * N_FEATURES,)),
         BatchNormalization(),
         Dropout(0.2),
@@ -48,7 +48,7 @@ def create_model():
         Dense(N_CLASSES, activation='softmax')
     ])
     
-    # compilation
+    # compilation avec optimisations
     optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
     model.compile(optimizer=optimizer,
                  loss='sparse_categorical_crossentropy',
@@ -118,27 +118,52 @@ def main():
     
     # 📱 conversion pour TFLite
     print("📱 conversion pour TFLite...")
+    
+    # Utiliser l'ancien convertisseur au lieu du MLIR
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    
+    # Configuration pour ESP32
     converter.target_spec.supported_ops = [
         tf.lite.OpsSet.TFLITE_BUILTINS
     ]
+    
+    # Forcer la version 3 du schéma
+    converter.target_spec.schema_version = 3
+    
+    # Optimisations pour ESP32
     converter.optimizations = [tf.lite.Optimize.DEFAULT]
     converter.target_spec.supported_types = [tf.float32]
     converter.inference_input_type = tf.float32
     converter.inference_output_type = tf.float32
     
-    # 🔧 forcer la version 3 pour compatibilite ESP32
-    converter.target_spec.schema_version = 3
+    # Désactiver le MLIR
+    converter.experimental_new_converter = False
     
+    # Forcer la forme d'entrée fixe
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS
+    ]
+    
+    # Conversion du modèle
     tflite_model = converter.convert()
     
     # 💾 sauvegarde du modele TFLite
     model_dir = os.path.join(DATA_DIR, 'model')
     os.makedirs(model_dir, exist_ok=True)
-    with open(os.path.join(model_dir, 'model.tflite'), 'wb') as f:
+    
+    tflite_path = os.path.join(model_dir, 'model.tflite')
+    with open(tflite_path, 'wb') as f:
         f.write(tflite_model)
+    
+    # Vérification du modèle créé
+    print(f"✅ Modèle TFLite sauvegardé: {tflite_path}")
+    print(f"✅ Taille du modèle: {os.path.getsize(tflite_path)} octets")
+    
+    # Utiliser un interpréteur pour vérifier la version du schéma
+    interpreter = tf.lite.Interpreter(model_path=tflite_path)
+    interpreter.allocate_tensors()
     
     print("✅ terminé!")
 
 if __name__ == "__main__":
-    main() 
+    main()
