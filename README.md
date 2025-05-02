@@ -1,6 +1,16 @@
-# Détecteur de Stress ESP32
+# 🤖 Détecteur de Stress ESP32 - Version Apprentissage Hebbien
 
-Ce projet utilise un ESP32 et un capteur MAX30102 pour détecter le stress en temps réel en analysant la variabilité de la fréquence cardiaque (HRV).
+## 📝 Description
+Ce projet utilise un ESP32 avec un capteur MAX30102 pour détecter le stress. Le capteur mesure les signaux IR et RED qui sont utilisés pour l'analyse du stress via un apprentissage en ligne basé sur la règle de Hebb.
+
+## 🎯 Fonctionnalités
+- Mesure des signaux IR et RED en temps réel
+- Apprentissage continu pendant l'utilisation
+- Adaptation aux changements physiologiques
+- Pas besoin de données pré-entraînées
+- Interface utilisateur avec LED d'état
+- Mode dégradé en cas d'erreur
+- Optimisation mémoire pour l'ESP32
 
 ## 🛠️ Matériel requis
 - ESP32 (testé avec Feather ESP32)
