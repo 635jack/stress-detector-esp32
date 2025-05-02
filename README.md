@@ -1,6 +1,15 @@
-# Détecteur de Stress ESP32
+# 🤖 Détecteur de Stress ESP32 - Version MLP Hors Ligne
 
-Ce projet utilise un ESP32 et un capteur MAX30102 pour détecter le stress en temps réel en analysant la variabilité de la fréquence cardiaque (HRV).
+## 📝 Description
+Ce projet utilise un ESP32 avec un capteur MAX30102 pour détecter le stress. Le capteur mesure les signaux IR et RED qui sont utilisés pour l'analyse du stress via un réseau de neurones MLP.
+
+## 🎯 Fonctionnalités
+- Mesure des signaux IR et RED en temps réel
+- Analyse du stress avec un réseau MLP pré-entraîné
+- Interface utilisateur avec LED d'état
+- Mode dégradé en cas d'erreur
+- Prétraitement des données avec normalisation
+- Classification en 3 états : repos, stress, exercice
 
 ## 🛠️ Matériel requis
 - ESP32 (testé avec Feather ESP32)
